@@ -2,7 +2,7 @@
 
 An additive-synthesis playground that runs in the browser. Build sounds out of sine waves (partials), see the waveform and spectrum, shape them with a drawable filter, synthesize vowels, and analyze your own voice with the microphone.
 
-**Live app:** https://YOUR-USERNAME.github.io/partials-bench/
+**Live app:** https://viela-la.github.io/partials-bench/
 
 ## Features
 
