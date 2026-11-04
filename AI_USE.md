@@ -1,5 +1,4 @@
 # AI Usage Statement
-## Acknowledgement
 Claude AI was used to generate all code in the `index.html` for the app in this repository, as well as the information in the `README.md` file.
 ## Logs
 ### Week 2: October 8, 2026
