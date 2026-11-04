@@ -26,3 +26,7 @@ The microphone needs a secure page (`https://` or a local file) and your permiss
 ## How it works
 
 Each partial is a Web Audio sine oscillator with its own gain. The filter and vowel synth set those gains from a frequency response, so the waveform and spectrum plots show exactly what you hear (amplitudes only; filter phase is not modeled). Pitch detection uses the YIN algorithm; formants are estimated by fitting the vowel model to the measured harmonic levels.
+
+
+## AI Acknowledgement Statement
+All code in `index.html`, and all information in `README.md` were generated using Claude AI. I checked all code for expected functionality, and descriptive text for accuracy.
