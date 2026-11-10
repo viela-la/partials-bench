@@ -9,7 +9,7 @@
 :root{
   --bg:#EDF0F2; --panel:#FFFFFF; --line:#D3DAE0; --fg:#15202A; --muted:#5D6B78;
   --accent:#2347C8; --accent-ink:#FFFFFF; --trace:#2347C8; --band:rgba(35,71,200,.22);
-  --grid:#E3E8EC; --axis:#AAB5BF; --warn:#B4441A; --field:#F5F7F9; --mic:#C27A0E; --env:#0F8A6C; --filt:#7C3AED;
+  --grid:#E3E8EC; --axis:#AAB5BF; --warn:#B4441A; --field:#F5F7F9; --mic:#C27A0E; --env:#0F8A6C; --filt:#7C3AED; --noise:#5E7D6C;
   --f-display:"Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
   --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -17,11 +17,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0F151B; --panel:#161F27; --line:#27333E; --fg:#DCE5EC; --muted:#8C9BA8;
   --accent:#7E9DFF; --accent-ink:#0B1020; --trace:#8FAAFF; --band:rgba(143,170,255,.25);
-  --grid:#1E2832; --axis:#3A4855; --warn:#F08A5D; --field:#111920; --mic:#F2B84B; --env:#4FD1A5; --filt:#B794F6; color-scheme:dark}}
+  --grid:#1E2832; --axis:#3A4855; --warn:#F08A5D; --field:#111920; --mic:#F2B84B; --env:#4FD1A5; --filt:#B794F6; --noise:#9DBBA9; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0F151B; --panel:#161F27; --line:#27333E; --fg:#DCE5EC; --muted:#8C9BA8;
   --accent:#7E9DFF; --accent-ink:#0B1020; --trace:#8FAAFF; --band:rgba(143,170,255,.25);
-  --grid:#1E2832; --axis:#3A4855; --warn:#F08A5D; --field:#111920; --mic:#F2B84B; --env:#4FD1A5; --filt:#B794F6; color-scheme:dark}
+  --grid:#1E2832; --axis:#3A4855; --warn:#F08A5D; --field:#111920; --mic:#F2B84B; --env:#4FD1A5; --filt:#B794F6; --noise:#9DBBA9; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
@@ -118,6 +118,9 @@ h3{font-family:var(--f-display);font-weight:500;font-size:.72rem;text-transform:
       <button id="play" class="primary">▶ Play</button>
       <label for="vol">Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.35" style="width:110px"></label>
       <span id="volv" class="mono muted" style="width:3ch">35</span>
+      <label for="noise" title="Adds noise to the sound. It goes through the filter too.">Noise <input id="noise" type="range" min="0" max="1" step="0.01" value="0" style="width:110px"></label>
+      <span id="noisev" class="mono muted" style="width:3ch">0</span>
+      <select id="noiseColor" aria-label="Noise color"><option value="white">white</option><option value="pink">pink</option><option value="brown">brown</option></select>
     </div>
   </header>
 
@@ -354,16 +357,18 @@ function drawScope(){
   const act0=active(),act=act0.map(p=>({f:p.f,a:p.a*fH(p.f)}));
   const bound=Math.max(act0.reduce((s,p)=>s+Math.abs(p.a),0),act.reduce((s,p)=>s+Math.abs(p.a),0));
   $('rPk').textContent=bound?bound.toFixed(3):'—';
+  const nzOn=NZ.level>0,nzv=nzOn?nzVis():null,nzk=nzOn?nzScale(nzv.fs,nzv.st):0;
   // sample
   const fmax=act.reduce((m,p)=>Math.max(m,p.f),0);
   const cols=Math.max(1,Math.floor(pw));
-  let n=Math.max(cols*4,Math.ceil(win*fmax*12));
+  let n=Math.max(cols*4,Math.ceil(win*fmax*12),nzOn?Math.min(600000,Math.ceil(win*48000*1.5)):0);
   n=Math.min(n,Math.max(cols*4,Math.floor(6e6/Math.max(1,act.length))),600000);
   const ys=new Float64Array(n+1),dt=win/n;
   for(const p of act){const w=2*Math.PI*p.f;let ph0=(w*t0)%(2*Math.PI);let s=Math.sin(ph0),c=Math.cos(ph0);const cs=Math.cos(w*dt),sn=Math.sin(w*dt);
     for(let i=0;i<=n;i++){ys[i]+=p.a*s;const s2=s*cs+c*sn;c=c*cs-s*sn;s=s2;
       if((i&4095)===4095){const ph=w*(t0+(i+1)*dt);s=Math.sin(ph);c=Math.cos(ph);}}}
-  let ymax=bound||1;
+  if(nzOn){const nd=nzv.d,L=nd.length,fs=nzv.fs;for(let i=0;i<=n;i++){const q=((t0+i*dt)*fs)%L,j=Math.floor(q),u=q-j;ys[i]+=nzk*(nd[j]*(1-u)+nd[(j+1)%L]*u);}}
+  let ymax=(bound+(nzOn?3*nzv.rms*nzk:0))||1;
   if($('autoY').checked&&act.length){let m=0;for(let i=0;i<=n;i++)m=Math.max(m,Math.abs(ys[i]));ymax=m||1;}
   ymax*=1.08;
   const X=t=>padL+(t-t0)/win*pw, Y=v=>padT+ph/2-v/ymax*ph/2;
@@ -374,7 +379,7 @@ function drawScope(){
   const xs=niceStep(win,Math.max(3,Math.floor(pw/(90*d))));
   g.textAlign='center';g.textBaseline='top';
   for(let t=Math.ceil(t0/xs)*xs;t<=t0+win+1e-12;t+=xs){const x=Math.round(X(t))+.5;g.strokeStyle=C.grid;g.beginPath();g.moveTo(x,padT);g.lineTo(x,padT+ph);g.stroke();g.fillStyle=C.muted;g.fillText(fmtT(+t.toPrecision(12)),x,padT+ph+5*d);}
-  if(!act.length){g.fillStyle=C.muted;g.textAlign='center';g.textBaseline='middle';g.font=`${13*d}px ${css('--f-body')}`;g.fillText('No active partials. Add a frequency on the right.',padL+pw/2,padT+ph/2);return;}
+  if(!act.length&&!nzOn){g.fillStyle=C.muted;g.textAlign='center';g.textBaseline='middle';g.font=`${13*d}px ${css('--f-body')}`;g.fillText('No active partials. Add a frequency on the right.',padL+pw/2,padT+ph/2);return;}
   g.save();g.beginPath();g.rect(padL,padT,pw,ph);g.clip();
   const spp=n/cols; // samples per pixel column
   if(spp>3){ // envelope
@@ -405,7 +410,7 @@ box.addEventListener('wheel',e=>{e.preventDefault();const r=box.getBoundingClien
 /* ---------- movable filter (RBJ biquad response applied to each partial's level) ---------- */
 const FL={on:false,type:'lowpass',fc:800,q:4,gain:9,order:1,sweep:false,rate:.3,depth:3,cur:800,t0:0,brush:.3,hover:null};
 // custom curve: dB values on a log-frequency grid from 20 Hz to 20 kHz
-const GN=384,GLO=20,GHI=20000,GOCT=Math.log2(GHI/GLO);FL.G=new Float32Array(GN);
+const GN=384,GLO=20,GHI=20000,GOCT=Math.log2(GHI/GLO);FL.G=new Float32Array(GN);FL.gv=0;
 const gPos=f=>Math.log2(Math.max(GLO,Math.min(GHI,f))/GLO)/GOCT*(GN-1);
 const gFreq=i=>GLO*Math.pow(2,i/(GN-1)*GOCT);
 function gridDb(f){const u=gPos(f),i=Math.floor(u);if(i>=GN-1)return FL.G[GN-1];const t=u-i;return FL.G[i]*(1-t)+FL.G[i+1]*t;}
@@ -426,6 +431,75 @@ function fltMag(f){
   return FL.order===2&&FL.type!=='peaking'?m*m:m;
 }
 const fH=f=>FL.on?fltMag(f):1;
+/* ---------- noise: a looping noise buffer sent through the same filter ---------- */
+function bqCoef(type,fc,Q,gdb,fs){
+  const w0=2*Math.PI*Math.min(fc,fs*.49)/fs,cw=Math.cos(w0),al=Math.sin(w0)/(2*Q),A=Math.pow(10,gdb/40);
+  let b0,b1,b2,a0=1+al,a1=-2*cw,a2=1-al;
+  if(type==='lowpass'){b0=(1-cw)/2;b1=1-cw;b2=b0;}else if(type==='highpass'){b0=(1+cw)/2;b1=-(1+cw);b2=b0;}
+  else if(type==='bandpass'){b0=al;b1=0;b2=-al;}else if(type==='notch'){b0=1;b1=-2*cw;b2=1;}
+  else{b0=1+al*A;b1=-2*cw;b2=1-al*A;a0=1+al/A;a2=1-al/A;}
+  return[b0/a0,b1/a0,b2/a0,a1/a0,a2/a0];
+}
+function bqMag(c,f,fs){const w=2*Math.PI*f/fs,c1=Math.cos(w),s1=Math.sin(w),c2=Math.cos(2*w),s2=Math.sin(2*w);const br=c[0]+c[1]*c1+c[2]*c2,bi=-(c[1]*s1+c[2]*s2),ar=1+c[3]*c1+c[4]*c2,ai=-(c[3]*s1+c[4]*s2);return Math.sqrt((br*br+bi*bi)/(ar*ar+ai*ai));}
+const NZ={level:0,color:'white',src:null,srcColor:null,gain:null,chain:[],chainKey:'',bufs:{},vis:null,visKey:''};
+// a drawn (custom) curve is played on noise by a 1/4-octave EQ of 39 peaking filters,
+// whose gains are a least-squares fit to the curve over 180 frequencies
+const EQF=[];for(let f=25;f<=20500;f*=Math.pow(2,1/4))EQF.push(f);const EQQ=2.5;
+let EQ=null;
+function invert(A){const n=A.length,M=A.map((r,i)=>[...r,...A.map((_,j)=>i===j?1:0)]);
+  for(let i=0;i<n;i++){let p=i;for(let r=i+1;r<n;r++)if(Math.abs(M[r][i])>Math.abs(M[p][i]))p=r;[M[i],M[p]]=[M[p],M[i]];const d=M[i][i];for(let c=0;c<2*n;c++)M[i][c]/=d;
+    for(let r=0;r<n;r++){if(r===i)continue;const f=M[r][i];if(f)for(let c=0;c<2*n;c++)M[r][c]-=f*M[i][c];}}
+  return M.map(r=>r.slice(n));}
+function eqSetup(fs){
+  if(EQ&&EQ.fs===fs)return EQ;
+  const fc=EQF.map(f=>Math.min(f,fs*.45)),M=180,FJ=[];for(let j=0;j<M;j++)FJ.push(25*Math.pow(Math.min(20000,fs*.45)/25,j/(M-1)));
+  const J=FJ.map(f=>fc.map(c=>20*Math.log10(bqMag(bqCoef('peaking',c,EQQ,6,fs),f,fs))/6)),N=fc.length;
+  const A=Array.from({length:N},(_,a)=>Array.from({length:N},(_,b)=>{let s=0;for(let j=0;j<M;j++)s+=J[j][a]*J[j][b];return s+(a===b?.05:0);}));
+  return EQ={fs,fc,FJ,J,Ai:invert(A),key:'',g:null,gv:-1};
+}
+function eqGains(fs){
+  const E=eqSetup(fs),sh=FL.fc/FL.cur,key=FL.gv+'|'+sh.toFixed(5);if(E.key===key)return E.g;
+  const T=E.FJ.map(f=>Math.max(-36,Math.min(24,gridDb(f*sh)))),N=E.fc.length;
+  let g,its;if(E.g&&E.gv===FL.gv){g=E.g.slice();its=2;}else{g=E.fc.map(f=>Math.max(-36,Math.min(24,gridDb(f*sh))));its=5;}
+  for(let it=0;it<its;it++){
+    const cs=E.fc.map((f,k)=>bqCoef('peaking',f,EQQ,g[k],fs)),r=E.FJ.map((f,j)=>{let got=0;for(const c of cs)got+=20*Math.log10(bqMag(c,f,fs));return T[j]-got;});
+    const b=Array.from({length:N},(_,a)=>{let s=0;for(let j=0;j<r.length;j++)s+=E.J[j][a]*r[j];return s;});
+    g=g.map((v,k)=>{let d=0;for(let m=0;m<N;m++)d+=E.Ai[k][m]*b[m];return Math.max(-40,Math.min(30,v+d));});
+  }
+  E.key=key;E.g=g;E.gv=FL.gv;return g;
+}
+// the noise filter as biquad stages (the same ones the audio graph uses)
+function nzStages(fs){
+  if(!FL.on)return[];
+  if(FL.type==='custom'){const g=eqGains(fs);return EQF.map((f,k)=>bqCoef('peaking',Math.min(f,fs*.45),EQQ,g[k],fs));}
+  const c=bqCoef(FL.type,FL.cur,FL.q,FL.gain,fs);return FL.order===2&&FL.type!=='peaking'?[c,c]:[c];
+}
+function nzMaxMag(fs,st){if(!st.length)return 1;let m=0;for(let i=0;i<=80;i++){const f=20*Math.pow(Math.min(1000,fs*.45/20),i/80);let v=1;for(const c of st)v*=bqMag(c,f,fs);if(v>m)m=v;}return Math.max(1,m);}
+// equal-RMS white / pink / brown noise, crossfaded so the loop point is seamless
+function makeNoise(color,fs,secs){
+  const n=Math.round(fs*secs),F=2048,d=new Float32Array(n+F);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,last=0;
+  for(let i=0;i<n+F;i++){const w=Math.random()*2-1;
+    if(color==='white')d[i]=w;
+    else if(color==='pink'){b0=.99886*b0+w*.0555179;b1=.99332*b1+w*.0750759;b2=.969*b2+w*.153852;b3=.8665*b3+w*.3104856;b4=.55*b4+w*.5329522;b5=-.7616*b5-w*.016898;d[i]=b0+b1+b2+b3+b4+b5+b6+w*.5362;b6=w*.115926;}
+    else{last=(last+.02*w)/1.02;d[i]=last;}}
+  const o=d.slice(0,n);for(let i=0;i<F;i++){const t=i/F;o[i]=d[i]*Math.sqrt(t)+d[n+i]*Math.sqrt(1-t);}
+  let m=0;for(let i=0;i<n;i++)m+=o[i];m/=n;let s=0;for(let i=0;i<n;i++){o[i]-=m;s+=o[i]*o[i];}
+  const k=.25/Math.sqrt(s/n);for(let i=0;i<n;i++)o[i]*=k;return o;
+}
+function noiseBuf(color,fs){const k=color+fs;return NZ.bufs[k]||(NZ.bufs[k]=makeNoise(color,fs,4));}
+// how loud the noise is in waveform units (partial amplitudes), matching playback
+function nzScale(fs,st){const act=active(),b=act.reduce((s,p)=>s+Math.abs(p.a),0),bf=act.reduce((s,p)=>s+Math.abs(p.a)*fH(p.f),0);return NZ.level*.9/Math.sqrt(nzMaxMag(fs,st))*Math.max(1,b,bf);}
+// one second of filtered noise for the waveform plot, recomputed when the filter or color changes
+function nzVis(){
+  const fs=48000,st=nzStages(fs),key=NZ.color+'|'+st.map(c=>c.map(v=>v.toFixed(5)).join(',')).join(';');
+  if(NZ.vis&&NZ.visKey===key)return NZ.vis;
+  const n=fs,x=Float32Array.from(noiseBuf(NZ.color,fs).subarray(0,n)),y=new Float32Array(n);
+  for(const c of st){let x1=0,x2=0,y1=0,y2=0;
+    for(let pass=0;pass<2;pass++)for(let i=pass?0:n-4800;i<n;i++){const xi=x[i],yi=c[0]*xi+c[1]*x1+c[2]*x2-c[3]*y1-c[4]*y2;x2=x1;x1=xi;y2=y1;y1=yi;if(pass)y[i]=yi;}
+    x.set(y);}
+  let s=0;for(let i=0;i<n;i++)s+=x[i]*x[i];
+  NZ.vis={d:x,fs,rms:Math.sqrt(s/n),st};NZ.visKey=key;return NZ.vis;
+}
 function sweepFc(now){return Math.min(20000,Math.max(20,FL.fc*Math.pow(2,FL.depth/2*Math.sin(2*Math.PI*FL.rate*(now-FL.t0)/1000))));}
 function fUI(){
   const set=(id,v)=>{if(document.activeElement!==$(id))$(id).value=v;};
@@ -478,6 +552,11 @@ function drawSpec(){
     if(isFinite(mx)){g.beginPath();g.moveTo(padL,Y(0));cols.forEach((v,k)=>{const lin=isFinite(v)?Math.pow(10,(v-mx)/20):0;g.lineTo(padL+k*d,Y(lin*amax/1.1*.9));});g.lineTo(padL+cols.length*d,Y(0));g.closePath();
       g.fillStyle=css('--mic');g.globalAlpha=.25;g.fill();g.globalAlpha=.9;g.strokeStyle=css('--mic');g.lineWidth=d;g.stroke();g.globalAlpha=1;}
   }
+  if(NZ.level>0){
+    const fs=ctx?ctx.sampleRate:48000,st=nzStages(fs);g.beginPath();g.moveTo(padL,Y(0));
+    for(let i=0;i<=pw;i+=2*d){const f=log?flo*Math.pow(fhi/flo,i/pw):Math.max(1,i/pw*fhi);let m=NZ.color==='white'?1:Math.pow(Math.max(f,20)/1000,NZ.color==='pink'?-.5:-1);for(const c of st)m*=bqMag(c,f,fs);g.lineTo(padL+i,Y(Math.min(amax*1.2,NZ.level*amax*.4*m)));}
+    g.lineTo(padL+pw,Y(0));g.closePath();g.fillStyle=css('--noise');g.globalAlpha=.25;g.fill();g.globalAlpha=.8;g.strokeStyle=css('--noise');g.lineWidth=d;g.stroke();g.globalAlpha=1;
+  }
   if(envPts.length){g.strokeStyle=css('--env');g.lineWidth=1.6*d;g.setLineDash([5*d,3*d]);g.beginPath();envPts.forEach(([x,a],k)=>k?g.lineTo(x,Y(a)):g.moveTo(x,Y(a)));g.stroke();g.setLineDash([]);}
   // filter response on its own dB scale (right axis)
   const DBH=24,DBL=-36,YD=db=>padT+(DBH-Math.max(DBL,Math.min(DBH,db)))/(DBH-DBL)*ph;
@@ -516,12 +595,13 @@ function drawSpec(){
   const lg=['<span><i style="background:var(--trace)"></i>partials</span>'];
   if(envPts.length)lg.push('<span><i style="background:var(--env)"></i>vowel envelope</span>');
   if(mic.on)lg.push('<span><i style="background:var(--mic)"></i>microphone (relative level)</span>');
+  if(NZ.level>0)lg.push(`<span><i style="background:var(--noise)"></i>${NZ.color} noise (relative level)</span>`);
   if(FL.on)lg.push('<span><i style="background:var(--filt)"></i>filter response (dB, right axis)</span><span><i style="background:var(--axis)"></i>before the filter</span>');
   const html=lg.join('');if($('specLegend').innerHTML!==html)$('specLegend').innerHTML=html;
 }
 
 /* ---------- audio ---------- */
-let ctx=null,master=null,voices=new Map(),playing=false,starting=null,lfo=null,vibG=null,gate=1;
+let ctx=null,master=null,voices=new Map(),playing=false,starting=null,lfo=null,vibG=null,gate=1,outNode=null;
 const nyquist=()=>ctx?ctx.sampleRate/2:24000;
 function masterGain(){const act=active(),b=act.reduce((s,p)=>s+Math.abs(p.a),0),bf=act.reduce((s,p)=>s+Math.abs(p.a)*fH(p.f),0);return gate*+$('vol').value/Math.max(1,b,bf);}
 function syncAudio(){
@@ -535,6 +615,30 @@ function syncAudio(){
     if(!v&&ok){const o=ctx.createOscillator(),gn=ctx.createGain();o.type='sine';o.frequency.value=Math.min(p.f,nyquist());gn.gain.value=0;o.connect(gn).connect(master);if(vibG)vibG.connect(o.detune);o.start(now);v={o,g:gn};voices.set(p.id,v);}
     if(v){if(ok)v.o.frequency.setTargetAtTime(Math.min(p.f,nyquist()),now,0.005);v.g.gain.setTargetAtTime(ok&&p.on?p.a*fH(p.f):0,now,tc);}
   }
+  noiseSync();
+}
+function nzKey(){return!FL.on?'off':FL.type==='custom'?'custom':FL.type+(FL.order===2&&FL.type!=='peaking'?2:1);}
+function noiseSync(){
+  if(!ctx||!playing)return;
+  const now=ctx.currentTime,fs=ctx.sampleRate;
+  const newSrc=()=>{const d=noiseBuf(NZ.color,fs),b=ctx.createBuffer(1,d.length,fs);b.copyToChannel(d,0);const s=ctx.createBufferSource();s.buffer=b;s.loop=true;s.connect(NZ.gain);s.start();return s;};
+  if(!NZ.src&&NZ.level>0){NZ.gain=ctx.createGain();NZ.gain.gain.value=0;NZ.chain=[];NZ.chainKey='';NZ.src=newSrc();NZ.srcColor=NZ.color;}
+  if(!NZ.src)return;
+  if(NZ.srcColor!==NZ.color){const old=NZ.src;NZ.src=newSrc();NZ.srcColor=NZ.color;old.stop(now+.03);}
+  // (re)build the filter chain when the filter type changes
+  const key=nzKey(),fresh=key!==NZ.chainKey;
+  if(fresh){
+    NZ.gain.disconnect();NZ.chain.forEach(n=>n.disconnect());NZ.chain=[];
+    if(key==='custom')EQF.forEach(f=>{const b=ctx.createBiquadFilter();b.type='peaking';b.frequency.value=Math.min(f,fs*.45);b.Q.value=EQQ;NZ.chain.push(b);});
+    else if(key!=='off')for(let i=0;i<(key.endsWith('2')?2:1);i++){const b=ctx.createBiquadFilter();b.type=FL.type;NZ.chain.push(b);}
+    let prev=NZ.gain;for(const nd of NZ.chain){prev.connect(nd);prev=nd;}prev.connect(outNode);NZ.chainKey=key;
+  }
+  const set=(prm,v)=>fresh?prm.value=v:prm.setTargetAtTime(v,now,.01);
+  if(key==='custom'){const gg=eqGains(fs);NZ.chain.forEach((b,k)=>set(b.gain,gg[k]));}
+  else NZ.chain.forEach(b=>{set(b.frequency,Math.min(FL.cur,fs*.45));
+    // Web Audio reads low-pass / high-pass Q in dB; the others take it as a plain ratio
+    set(b.Q,FL.type==='lowpass'||FL.type==='highpass'?20*Math.log10(FL.q):FL.q);if(FL.type==='peaking')set(b.gain,FL.gain);});
+  NZ.gain.gain.setTargetAtTime(NZ.level*+$('vol').value*.9/Math.sqrt(nzMaxMag(fs,nzStages(fs))),now,.03);
 }
 function start(){
   if(playing)return Promise.resolve();
@@ -546,17 +650,22 @@ async function doStart(){
   await ctx.resume();
   if(!lfo){lfo=ctx.createOscillator();vibG=ctx.createGain();vibG.gain.value=0;lfo.frequency.value=5.5;lfo.connect(vibG);lfo.start();}
   setVib();
-  master=ctx.createGain();master.gain.value=0;master.connect(ctx.destination);
+  // gentle limiter on the output so partials plus noise never clip
+  if(!outNode){outNode=ctx.createDynamicsCompressor();outNode.threshold.value=-3;outNode.knee.value=0;outNode.ratio.value=20;outNode.attack.value=.002;outNode.release.value=.15;outNode.connect(ctx.destination);}
+  master=ctx.createGain();master.gain.value=0;master.connect(outNode);
   voices=new Map();playing=true;syncAudio();
   $('play').textContent='■ Stop';$('play').classList.add('on');renderInfo();
 }
 function stop(){
   if(!ctx)return;const now=ctx.currentTime;master.gain.setTargetAtTime(0,now,0.02);
   const old=voices,m=master;setTimeout(()=>{old.forEach(v=>{try{v.o.stop()}catch(e){}});m.disconnect();},200);
+  if(NZ.src){const s=NZ.src,gn=NZ.gain,ch=NZ.chain;gn.gain.setTargetAtTime(0,now,.02);setTimeout(()=>{try{s.stop()}catch(e){}gn.disconnect();ch.forEach(n=>n.disconnect());},200);NZ.src=null;NZ.gain=null;NZ.chain=[];NZ.chainKey='';}
   voices=new Map();playing=false;$('play').textContent='▶ Play';$('play').classList.remove('on');
 }
 $('play').onclick=()=>playing?stop():start();
 $('vol').oninput=e=>{$('volv').textContent=Math.round(e.target.value*100);syncAudio();};
+$('noise').oninput=e=>{NZ.level=+e.target.value;$('noisev').textContent=Math.round(NZ.level*100);syncAudio();renderInfo();dirtyScope=true;kick();};
+$('noiseColor').onchange=e=>{NZ.color=e.target.value;syncAudio();dirtyScope=true;kick();};
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)){e.preventDefault();$('play').click();}});
 
 /* ---------- partial list ---------- */
@@ -582,7 +691,8 @@ function renderInfo(){
   $('count').textContent=`· ${act.length}/${partials.length} on`;
   const hi=partials.filter(p=>p.f>nyquist()).length;
   $('nyq').innerHTML=(b>1?`Amplitudes sum to ${b.toFixed(2)}, so playback is scaled down by that factor to avoid clipping. `:'Amplitudes sum to '+b.toFixed(2)+'. ')+
-    (hi?`<span class="warn">${hi} partial${hi>1?'s are':' is'} above ${Math.round(nyquist())} Hz (Nyquist) and can’t play correctly.</span> `:'')+'Negative amplitude flips the phase. Space bar plays/stops.';
+    (hi?`<span class="warn">${hi} partial${hi>1?'s are':' is'} above ${Math.round(nyquist())} Hz (Nyquist) and can’t play correctly.</span> `:'')+
+    (NZ.level>0?`Noise is on (${NZ.color}) and goes through the filter${FL.on&&FL.type==='custom'?', played with a 39-band 1/4-octave EQ fitted to your drawn curve':''}. `:'')+'Negative amplitude flips the phase. Space bar plays/stops.';
 }
 let raf=0;
 function update(structural,src){if(src!=='vowel')vowelRelease();if(structural)render();renderInfo();save();syncAudio();cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{drawScope();drawSpec();});}
@@ -996,7 +1106,7 @@ const evXY=e=>{const r=sbox.getBoundingClientRect(),d=SG.d;return[(e.clientX-r.l
 // pull the curve toward (x,y) with a Gaussian brush, width in octaves
 function paint(x,y){
   const u=gPos(fFromX(x)*FL.fc/FL.cur),t=Math.max(-36,Math.min(24,24-(y-SG.padT)/SG.ph*60)),sg=FL.brush*(GN-1)/GOCT,r=Math.ceil(3*sg);
-  for(let i=Math.max(0,Math.floor(u-r));i<=Math.min(GN-1,Math.ceil(u+r));i++){const w=Math.exp(-.5*((i-u)/sg)**2);FL.G[i]+=(t-FL.G[i])*w;}
+  for(let i=Math.max(0,Math.floor(u-r));i<=Math.min(GN-1,Math.ceil(u+r));i++){const w=Math.exp(-.5*((i-u)/sg)**2);FL.G[i]+=(t-FL.G[i])*w;}FL.gv++;
 }
 sbox.addEventListener('pointerdown',e=>{
   if(!FL.on||!SG)return;
@@ -1031,7 +1141,7 @@ sbox.addEventListener('wheel',e=>{if(!FL.on)return;e.preventDefault();
 $('fOn').onchange=e=>{FL.on=e.target.checked;if(FL.on&&!$('logF').checked){$('logF').checked=true;}FL.t0=performance.now();fApply();};
 $('fType').onchange=e=>{
   // switching to Custom copies the current filter's response into the drawable curve
-  if(e.target.value==='custom'&&FL.type!=='custom'){for(let i=0;i<GN;i++)FL.G[i]=Math.max(-36,Math.min(24,20*Math.log10(fltMag(gFreq(i)*FL.cur/FL.fc)+1e-9)));}
+  if(e.target.value==='custom'&&FL.type!=='custom'){for(let i=0;i<GN;i++)FL.G[i]=Math.max(-36,Math.min(24,20*Math.log10(fltMag(gFreq(i)*FL.cur/FL.fc)+1e-9)));FL.gv++;}
   if(!FL.on){FL.on=true;$('fOn').checked=true;if(!$('logF').checked)$('logF').checked=true;FL.t0=performance.now();}
   FL.type=e.target.value;if(FL.type==='bandpass'&&FL.q<1.5)FL.q=4;fApply();};
 $('fFreq').onchange=e=>{const v=parseFloat(e.target.value);if(v>=20&&v<=20000)FL.fc=v;fApply();};
@@ -1042,10 +1152,10 @@ $('fSweep').onchange=e=>{FL.sweep=e.target.checked;FL.t0=performance.now();fAppl
 $('fRate').oninput=e=>{const now=performance.now(),ph=FL.rate*(now-FL.t0);FL.rate=+e.target.value;FL.t0=now-ph/FL.rate;$('fRateV').textContent=FL.rate.toFixed(2)+' Hz';};
 $('fDepth').oninput=e=>{FL.depth=+e.target.value;$('fDepthV').textContent='±'+(FL.depth/2)+' oct';};
 $('fBrush').oninput=e=>{FL.brush=+e.target.value;$('fBrushV').textContent=FL.brush.toFixed(2)+' oct';kick();};
-$('fFlat').onclick=()=>{FL.G.fill(0);fApply();};
+$('fFlat').onclick=()=>{FL.G.fill(0);FL.gv++;fApply();};
 $('fSmooth').onclick=()=>{const k=[],sg=4;for(let j=-12;j<=12;j++)k.push(Math.exp(-.5*(j/sg)**2));const o=new Float32Array(GN);
-  for(let i=0;i<GN;i++){let s=0,w=0;for(let j=-12;j<=12;j++){const q=i+j;if(q<0||q>=GN)continue;s+=FL.G[q]*k[j+12];w+=k[j+12];}o[i]=s/w;}FL.G.set(o);fApply();};
-$('fFlip').onclick=()=>{for(let i=0;i<GN;i++)FL.G[i]=Math.max(-36,Math.min(24,-FL.G[i]));fApply();};
+  for(let i=0;i<GN;i++){let s=0,w=0;for(let j=-12;j<=12;j++){const q=i+j;if(q<0||q>=GN)continue;s+=FL.G[q]*k[j+12];w+=k[j+12];}o[i]=s/w;}FL.G.set(o);FL.gv++;fApply();};
+$('fFlip').onclick=()=>{for(let i=0;i<GN;i++)FL.G[i]=Math.max(-36,Math.min(24,-FL.G[i]));FL.gv++;fApply();};
 fUI();
 
 window.addEventListener('resize',()=>{drawScope();drawSpec();kick();});
@@ -1055,5 +1165,6 @@ if(document.fonts)document.fonts.ready.then(()=>{drawScope();drawSpec();kick();}
 syncViewUI();hPreview();update(true);
 })();
 </script>
+
 
 </body></html>

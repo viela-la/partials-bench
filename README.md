@@ -11,6 +11,7 @@ An additive-synthesis playground that runs in the browser. Build sounds out of s
 - **Waveform** — zoom from 1 ms to 20 s, drag to pan, scroll or pinch to zoom.
 - **Spectrum** — linear or log frequency axis.
 - **Filter** — low-pass, high-pass, band-pass, notch, peak, or a custom curve you draw by dragging on the spectrum. Optional automatic sweep.
+- **Noise** — a Noise slider next to Volume adds white, pink or brown noise. It goes through the filter too, so the filter can shape it into hisses and whooshes.
 - **Vowel synth** — 10 English vowels for man, woman and child voices (Peterson & Barney, 1952 formant averages). Click a vowel, drag on the vowel chart, or type a sequence such as `ee eh ah aw oo` and press Speak.
 - **Microphone** — live pitch, spectrum and vowel detection; capture a sound as partials; let the synth follow your pitch and vowel; or capture your voice so every vowel is rebuilt from your pitch, voice color and formant scale.
 
@@ -25,7 +26,7 @@ The microphone needs a secure page (`https://` or a local file) and your permiss
 
 ## How it works
 
-Each partial is a Web Audio sine oscillator with its own gain. The filter and vowel synth set those gains from a frequency response, so the waveform and spectrum plots show exactly what you hear (amplitudes only; filter phase is not modeled). Pitch detection uses the YIN algorithm; formants are estimated by fitting the vowel model to the measured harmonic levels.
+Each partial is a Web Audio sine oscillator with its own gain. The filter and vowel synth set those gains from a frequency response, so the waveform and spectrum plots show exactly what you hear (amplitudes only; filter phase is not modeled). Noise is a looping noise buffer sent through Web Audio filters that match the on-screen response; a drawn custom curve is played on the noise by a 39-band, 1/4-octave equalizer fitted to the curve. Pitch detection uses the YIN algorithm; formants are estimated by fitting the vowel model to the measured harmonic levels.
 
 
 ## AI Acknowledgement Statement
